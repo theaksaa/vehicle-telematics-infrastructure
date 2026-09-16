@@ -1,0 +1,12 @@
+# The backend can observe every device and publish desired configuration.
+user telemetry-backend
+topic read v1/devices/+/telemetry
+topic read v1/devices/+/state
+topic read v1/devices/+/config/reported
+topic write v1/devices/+/config/desired
+
+# For device certificates, %u is the certificate Common Name.
+pattern write v1/devices/%u/telemetry
+pattern write v1/devices/%u/state
+pattern read v1/devices/%u/config/desired
+pattern write v1/devices/%u/config/reported

@@ -1,0 +1,4 @@
+FROM eclipse-mosquitto:2.1.2-alpine
+
+COPY --chown=mosquitto:mosquitto --chmod=0644 mosquitto/config/mosquitto.conf /mosquitto/config/mosquitto.conf
+COPY --chown=mosquitto:mosquitto --chmod=0600 mosquitto/config/acl /mosquitto/config/acl

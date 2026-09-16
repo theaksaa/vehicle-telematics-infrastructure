@@ -1,0 +1,27 @@
+services:
+  mosquitto:
+    build:
+      context: .
+      dockerfile: Dockerfile.mosquitto
+    image: vehicle-telematics-mosquitto:local
+    ports:
+      - "${MQTT_BIND_ADDRESS:-127.0.0.1}:8883:8883"
+    volumes:
+      - ./certs/client-ca.crt:/mosquitto/certs/client-ca.crt:ro
+      - ./certs/server/fullchain.pem:/mosquitto/certs/server/fullchain.pem:ro
+      - ./certs/server/privkey.pem:/mosquitto/certs/server/privkey.pem:ro
+      - mosquitto-data:/mosquitto/data
+    restart: unless-stopped
+
+  mqtt-client:
+    image: eclipse-mosquitto:2.1.2-alpine
+    profiles:
+      - tools
+    volumes:
+      - ./certs/client-ca.crt:/certs/client-ca.crt:ro
+      - ./pki/clients:/clients:ro
+    command:
+      - "true"
+
+volumes:
+  mosquitto-data:
