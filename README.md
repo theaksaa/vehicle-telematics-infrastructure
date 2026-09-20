@@ -6,6 +6,7 @@ Mosquitto MQTT broker with mutual TLS authentication for firmware devices and a 
 
 - Docker with Docker Compose
 - OpenSSL 3.x
+- curl for downloading a public broker trust anchor
 - Certbot only when using a public Let's Encrypt certificate
 
 Create the directories used by the commands below:
@@ -14,8 +15,6 @@ Create the directories used by the commands below:
 mkdir -p certs/server pki/client-ca pki/clients
 chmod 700 pki/client-ca pki/clients
 ```
-
-`certs/`, `pki/`, and `.env` are excluded from Git.
 
 ## 2. Create the private client CA
 
@@ -165,8 +164,13 @@ Create an `A` or `AAAA` DNS record pointing `mqtt.example.com` to the public ser
 ```sh
 sudo certbot certonly \
   --standalone \
+  --key-type rsa \
+  --rsa-key-size 2048 \
+  --preferred-chain "ISRG Root X1" \
   -d mqtt.example.com
 ```
+
+The RSA key and X1-compatible chain are selected for embedded-modem compatibility. Certbot otherwise defaults to an ECDSA subscriber key for new certificates.
 
 Copy the issued files into the paths used by Docker:
 
@@ -190,6 +194,9 @@ Let's Encrypt IP certificates require Certbot 5.4 or newer and are valid for app
 sudo certbot certonly \
   --preferred-profile shortlived \
   --standalone \
+  --key-type rsa \
+  --rsa-key-size 2048 \
+  --preferred-chain "ISRG Root X1" \
   --ip-address YOUR_PUBLIC_IP
 ```
 
@@ -295,12 +302,61 @@ TLS verification: required
 Client certificate authentication: required
 ```
 
-Firmware `device-001` receives:
+### Prepare the firmware certificate package
+
+Create the firmware certificate package for `device-001`:
+
+```sh
+mkdir -p pki/firmware/device-001
+chmod 700 pki/firmware/device-001
+```
+
+For a locally generated broker certificate from option A, use the private
+deployment CA as the broker trust anchor:
+
+```sh
+install -m 0644 \
+  certs/client-ca.crt \
+  pki/firmware/device-001/broker-ca.pem
+```
+
+For a Let's Encrypt broker certificate using the X1-compatible chain from
+option B or C, download the ISRG Root X1 trust anchor instead:
+
+```sh
+curl -fsSL \
+  https://letsencrypt.org/certs/isrgrootx1.pem \
+  -o pki/firmware/device-001/broker-ca.pem
+
+chmod 0644 pki/firmware/device-001/broker-ca.pem
+```
+
+Install the device certificate and its unencrypted private key using the names
+expected by the firmware:
+
+```sh
+install -m 0644 \
+  pki/clients/device-001.crt \
+  pki/firmware/device-001/device.pem
+
+install -m 0600 \
+  pki/clients/device-001.key \
+  pki/firmware/device-001/device-key.pem
+```
+
+The resulting device package is:
 
 ```text
-pki/clients/device-001.crt
-pki/clients/device-001.key
+pki/firmware/device-001/broker-ca.pem
+pki/firmware/device-001/device.pem
+pki/firmware/device-001/device-key.pem
 ```
+
+`broker-ca.pem` verifies the MQTT broker. `device.pem` identifies the device,
+and its Common Name must match the firmware device ID (`device-001` in this
+example). `device-key.pem` is secret and must remain with the provisioned
+device. Never copy the client CA private key or broker private key into this
+package.
 
 The backend receives:
 
@@ -315,7 +371,10 @@ For the locally generated broker certificate, clients also trust:
 certs/client-ca.crt
 ```
 
-For a Let's Encrypt broker certificate, clients use their operating-system/public CA trust store instead. They still present their private device or backend client certificate.
+For a Let's Encrypt broker certificate, desktop and backend clients can use
+their operating-system/public CA trust store. Embedded firmware without a
+public CA store uses the explicitly provisioned `broker-ca.pem` above. All
+clients still present their private device or backend client certificate.
 
 Never distribute these keys:
 
